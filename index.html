@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drawing App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@latest/css/all.min.css">
+    <meta name="description" content="Discover a new way to create svg, just draw them !">
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h1 class="text-2xl font-bold text-gray-800">Drawing App</h1>
+                <div class="space-x-2">
+                    <button id="undoBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        <i class="fas fa-undo mr-2"></i>Undo
+                    </button>
+                    <button id="clearBtn" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                        <i class="fas fa-trash-alt mr-2"></i>Clear
+                    </button>
+                    <button id="downloadBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                        <i class="fas fa-download mr-2"></i>Download SVG
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex gap-4">
+                <div class="w-48 bg-gray-200 p-4 rounded">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Shape</label>
+                            <select id="shapeSelect" class="mt-1 block w-full rounded border-gray-300 shadow-sm">
+                                <option value="pen">Pen</option>
+                                <option value="rect">Rectangle</option>
+                                <option value="circle">Circle</option>
+                                <option value="line">Line</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Stroke Color</label>
+                            <input type="color" id="colorPicker" class="mt-1 block w-full">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Fill Color</label>
+                            <input type="color" id="fillColorPicker" class="mt-1 block w-full">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Fill Mode</label>
+                            <select id="fillMode" class="mt-1 block w-full rounded border-gray-300 shadow-sm">
+                                <option value="none">No Fill</option>
+                                <option value="fill">Fill Shape</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Stroke Width</label>
+                            <input type="range" id="strokeWidth" min="1" max="20" value="2" class="mt-1 block w-full">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex-1 relative">
+                    <svg id="canvas" class="w-full h-[600px] border-2 border-gray-300 rounded bg-white"></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const clearBtn = document.getElementById('clearBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const undoBtn = document.getElementById('undoBtn');
+        const shapeSelect = document.getElementById('shapeSelect');
+        const colorPicker = document.getElementById('colorPicker');
+        const fillColorPicker = document.getElementById('fillColorPicker');
+        const fillMode = document.getElementById('fillMode');
+        const strokeWidth = document.getElementById('strokeWidth');
+
+        let isDrawing = false;
+        let currentShape = null;
+        let startX = 0;
+        let startY = 0;
+        let pathData = '';
+        let drawingHistory = [];
+
+        function getMousePosition(event) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top
+            };
+        }
+
+        function createShape(type, x1, y1, x2, y2) {
+            const shape = document.createElementNS("http://www.w3.org/2000/svg", type === 'pen' ? 'path' : type);
+            const color = colorPicker.value;
+            const fill = fillMode.value === 'fill' ? fillColorPicker.value : 'none';
+            const width = strokeWidth.value;
+
+            shape.setAttribute('stroke', color);
+            shape.setAttribute('stroke-width', width);
+            shape.setAttribute('fill', fill);
+
+            switch(type) {
+                case 'pen':
+                    if (!pathData) {
+                        pathData = `M ${x1} ${y1}`;
+                    }
+                    pathData += ` L ${x2} ${y2}`;
+                    shape.setAttribute('d', pathData);
+                    break;
+                case 'rect':
+                    const [x, y, w, h] = [
+                        Math.min(x1, x2),
+                        Math.min(y1, y2),
+                        Math.abs(x2 - x1),
+                        Math.abs(y2 - y1)
+                    ];
+                    shape.setAttribute('x', x);
+                    shape.setAttribute('y', y);
+                    shape.setAttribute('width', w);
+                    shape.setAttribute('height', h);
+                    break;
+                case 'circle':
+                    const radius = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+                    shape.setAttribute('cx', x1);
+                    shape.setAttribute('cy', y1);
+                    shape.setAttribute('r', radius);
+                    break;
+                case 'line':
+                    shape.setAttribute('x1', x1);
+                    shape.setAttribute('y1', y1);
+                    shape.setAttribute('x2', x2);
+                    shape.setAttribute('y2', y2);
+                    break;
+            }
+
+            return shape;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            const pos = getMousePosition(e);
+            startX = pos.x;
+            startY = pos.y;
+            pathData = '';
+
+            if (shapeSelect.value === 'pen') {
+                currentShape = createShape('pen', startX, startY, startX, startY);
+            } else {
+                currentShape = createShape(shapeSelect.value, startX, startY, startX, startY);
+            }
+            canvas.appendChild(currentShape);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const pos = getMousePosition(e);
+
+            if (shapeSelect.value === 'pen') {
+                currentShape = createShape('pen', startX, startY, pos.x, pos.y);
+                canvas.removeChild(canvas.lastChild);
+                canvas.appendChild(currentShape);
+            } else {
+                if (currentShape) {
+                    canvas.removeChild(currentShape);
+                }
+                currentShape = createShape(shapeSelect.value, startX, startY, pos.x, pos.y);
+                canvas.appendChild(currentShape);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+            if (currentShape) {
+                drawingHistory.push(currentShape.cloneNode(true));
+            }
+            currentShape = null;
+        });
+
+        clearBtn.addEventListener('click', () => {
+            while (canvas.firstChild) {
+                canvas.removeChild(canvas.firstChild);
+            }
+            drawingHistory = [];
+        });
+
+        undoBtn.addEventListener('click', () => {
+            if (drawingHistory.length > 0) {
+                canvas.removeChild(canvas.lastChild);
+                drawingHistory.pop();
+            }
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const svgData = new XMLSerializer().serializeToString(canvas);
+            const blob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'drawing.svg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        });
+
+        function setCanvasSize() {
+            const container = canvas.parentElement;
+            canvas.setAttribute('viewBox', `0 0 ${container.clientWidth} ${container.clientHeight}`);
+        }
+
+        setCanvasSize();
+        window.addEventListener('resize', setCanvasSize);
+    </script>
+</body>
+</html>
